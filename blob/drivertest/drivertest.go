@@ -102,19 +102,19 @@ type AsTest interface {
 	ErrorCheck(b *blob.Bucket, err error) error
 	// BeforeRead will be passed directly to ReaderOptions as part of reading
 	// a test blob.
-	BeforeRead(as func(interface{}) bool) error
+	BeforeRead(as func(any) bool) error
 	// BeforeWrite will be passed directly to WriterOptions as part of creating
 	// a test blob.
-	BeforeWrite(as func(interface{}) bool) error
+	BeforeWrite(as func(any) bool) error
 	// BeforeCopy will be passed directly to CopyOptions as part of copying
 	// the test blob.
-	BeforeCopy(as func(interface{}) bool) error
+	BeforeCopy(as func(any) bool) error
 	// BeforeList will be passed directly to ListOptions as part of listing the
 	// test blob.
-	BeforeList(as func(interface{}) bool) error
+	BeforeList(as func(any) bool) error
 	// BeforeSign will be passed directly to SignedURLOptions as part of
 	// generating a signed URL to the test blob.
-	BeforeSign(as func(interface{}) bool) error
+	BeforeSign(as func(any) bool) error
 	// AttributesCheck will be called after fetching the test blob's attributes.
 	// It should call attrs.As and verify the results.
 	AttributesCheck(attrs *blob.Attributes) error
@@ -149,35 +149,35 @@ func (verifyAsFailsOnNil) ErrorCheck(b *blob.Bucket, err error) (ret error) {
 	return nil
 }
 
-func (verifyAsFailsOnNil) BeforeRead(as func(interface{}) bool) error {
+func (verifyAsFailsOnNil) BeforeRead(as func(any) bool) error {
 	if as(nil) {
 		return errors.New("want BeforeReader's As to return false when passed nil")
 	}
 	return nil
 }
 
-func (verifyAsFailsOnNil) BeforeWrite(as func(interface{}) bool) error {
+func (verifyAsFailsOnNil) BeforeWrite(as func(any) bool) error {
 	if as(nil) {
 		return errors.New("want BeforeWrite's As to return false when passed nil")
 	}
 	return nil
 }
 
-func (verifyAsFailsOnNil) BeforeCopy(as func(interface{}) bool) error {
+func (verifyAsFailsOnNil) BeforeCopy(as func(any) bool) error {
 	if as(nil) {
 		return errors.New("want BeforeCopy's As to return false when passed nil")
 	}
 	return nil
 }
 
-func (verifyAsFailsOnNil) BeforeList(as func(interface{}) bool) error {
+func (verifyAsFailsOnNil) BeforeList(as func(any) bool) error {
 	if as(nil) {
 		return errors.New("want BeforeList's As to return false when passed nil")
 	}
 	return nil
 }
 
-func (verifyAsFailsOnNil) BeforeSign(as func(interface{}) bool) error {
+func (verifyAsFailsOnNil) BeforeSign(as func(any) bool) error {
 	if as(nil) {
 		return errors.New("want BeforeSign's As to return false when passed nil")
 	}
@@ -259,6 +259,9 @@ func RunConformanceTests(t *testing.T, newHarness HarnessMaker, asTests []AsTest
 	})
 	t.Run("TestSignedURL", func(t *testing.T) {
 		testSignedURL(t, newHarness)
+	})
+	t.Run("TestIfNotExist", func(t *testing.T) {
+		testIfNotExist(t, newHarness)
 	})
 	asTests = append(asTests, verifyAsFailsOnNil{})
 	t.Run("TestAs", func(t *testing.T) {
@@ -2539,7 +2542,7 @@ func testSignedURL(t *testing.T, newHarness HarnessMaker) {
 			if success != test.wantSuccess {
 				t.Errorf("PUT to %q with ContentType %q got status code %d, wanted 2xx? %v", test.urlDescription, test.contentType, resp.StatusCode, test.wantSuccess)
 				gotBody, _ := io.ReadAll(resp.Body)
-				t.Errorf(string(gotBody))
+				t.Error(string(gotBody))
 			}
 		}
 	}
@@ -2563,7 +2566,7 @@ func testSignedURL(t *testing.T, newHarness HarnessMaker) {
 			if success != test.wantSuccess {
 				t.Errorf("GET to %q got status code %d, want 2xx? %v", test.urlDescription, resp.StatusCode, test.wantSuccess)
 				gotBody, _ := io.ReadAll(resp.Body)
-				t.Errorf(string(gotBody))
+				t.Error(string(gotBody))
 			} else if success {
 				gotBody, err := io.ReadAll(resp.Body)
 				if err != nil {
@@ -2595,7 +2598,7 @@ func testSignedURL(t *testing.T, newHarness HarnessMaker) {
 			success := resp.StatusCode >= 200 && resp.StatusCode < 300
 			if success != test.wantSuccess {
 				gotBody, _ := io.ReadAll(resp.Body)
-				t.Errorf(string(gotBody))
+				t.Error(string(gotBody))
 				t.Fatalf("DELETE to %q got status code %d, want 2xx? %v", test.urlDescription, resp.StatusCode, test.wantSuccess)
 			}
 		}
@@ -2610,7 +2613,7 @@ func testSignedURL(t *testing.T, newHarness HarnessMaker) {
 			if resp.StatusCode != 404 {
 				t.Errorf("GET after DELETE got status code %d, want 404", resp.StatusCode)
 				gotBody, _ := io.ReadAll(resp.Body)
-				t.Errorf(string(gotBody))
+				t.Error(string(gotBody))
 			}
 		}
 	}
@@ -2731,6 +2734,64 @@ func testAs(t *testing.T, newHarness HarnessMaker, st AsTest) {
 		if err != nil && gcerrors.Code(err) != gcerrors.Unimplemented {
 			t.Errorf("got err %v when signing url with method %q", err, method)
 		}
+	}
+}
+
+func testIfNotExist(t *testing.T, newHarness HarnessMaker) {
+	t.Helper()
+
+	const key = "blob-for-if-not-exist"
+	const contents = "up and down"
+
+	ctx := context.Background()
+	h, err := newHarness(ctx, t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+	drv, err := h.MakeDriver(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := blob.NewBucket(drv)
+	defer func() { _ = b.Close() }()
+
+	opts := blob.WriterOptions{
+		ContentType: "text",
+		IfNotExist:  true,
+	}
+
+	// Create the new blob; expected to work since it doesn't exist.
+	w1, err := b.NewWriter(ctx, key, &opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = b.Delete(ctx, key)
+	}()
+	if _, err := w1.Write([]byte(contents)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Attempt a second write to the same key; expected to fail in
+	// either Write or Close, with FailedPrecondition.
+	w2, err := b.NewWriter(ctx, key, &opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = w2.Write([]byte(contents)); err == nil {
+		err = w2.Close()
+	} else {
+		_ = w2.Close()
+	}
+	if err == nil {
+		t.Error("expected error rewriting key with IfNotExist, got nil")
+	}
+	if code := gcerrors.Code(err); code != gcerrors.FailedPrecondition {
+		t.Errorf("expected FailedPrecondition error, got %v", code)
 	}
 }
 

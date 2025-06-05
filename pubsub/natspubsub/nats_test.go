@@ -180,7 +180,7 @@ func (natsAsTest) MessageCheck(m *pubsub.Message) error {
 	return nil
 }
 
-func (n natsAsTest) BeforeSend(as func(interface{}) bool) error {
+func (n natsAsTest) BeforeSend(as func(any) bool) error {
 	if !n.useV2 {
 		return nil
 	}
@@ -196,7 +196,7 @@ func (n natsAsTest) BeforeSend(as func(interface{}) bool) error {
 	return nil
 }
 
-func (natsAsTest) AfterSend(as func(interface{}) bool) error {
+func (natsAsTest) AfterSend(as func(any) bool) error {
 	return nil
 }
 
@@ -237,7 +237,7 @@ func TestInteropWithDirectNATS(t *testing.T) {
 	}
 	m, err := nsub.NextMsgWithContext(ctx)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err.Error())
 	}
 	if !bytes.Equal(m.Data, body) {
 		t.Fatalf("Data did not match. %q vs %q\n", m.Data, body)
@@ -291,7 +291,7 @@ func TestInteropWithDirectNATSV2(t *testing.T) {
 	}
 	m, err := nsub.NextMsgWithContext(ctx)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err.Error())
 	}
 	if !bytes.Equal(m.Data, body) {
 		t.Fatalf("Data did not match. %q vs %q\n", m.Data, body)
@@ -601,7 +601,7 @@ func TestCodec(t *testing.T) {
 		{Metadata: map[string]string{"a": "1"}, Body: []byte("hello")},
 		{
 			Metadata: map[string]string{"a": "1"}, Body: []byte("hello"),
-			AckID: "foo", AsFunc: func(interface{}) bool { return true },
+			AckID: "foo", AsFunc: func(any) bool { return true },
 		},
 	} {
 		t.Run("V1", func(t *testing.T) {
